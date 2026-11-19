@@ -1,0 +1,46 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test-and-scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -r requirements-dev.txt
+
+      - name: Unit tests
+        run: python -m pytest
+
+      - name: Scan the app we ship (must be clean)
+        run: python -m scanner.scan app/secure_app.py
+
+      - name: Prove the scanner still catches the vulnerable demo
+        run: |
+          if python -m scanner.scan app/vulnerable_app.py; then
+            echo "Scanner failed to flag the vulnerable demo" && exit 1
+          fi
+
+  # Day 2: deploy to AWS once the job above is green.
+  # Use GitHub OIDC (no long-lived AWS keys in repo secrets):
+  #
+  # deploy:
+  #   needs: test-and-scan
+  #   if: github.ref == 'refs/heads/main'
+  #   runs-on: ubuntu-latest
+  #   permissions:
+  #     id-token: write
+  #     contents: read
+  #   steps:
+  #     - uses: actions/checkout@v4
+  #     - uses: aws-actions/configure-aws-credentials@v4
+  #       with:
+  #         role-to-assume: arn:aws:iam::<ACCOUNT_ID>:role/<GITHUB_DEPLOY_ROLE>
+  #         aws-region: ap-south-1
+  #     # build image, push to ECR, then update the App Runner / ECS service
